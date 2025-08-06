@@ -1,4 +1,5 @@
 use super::utils::{self, get_average_gas, get_transactions};
+use crate::errors::WalletError;
 use crate::ethereum::utils::{get_balance, get_fiat_balance};
 use crate::{enums::Action, structs::Transaction};
 use std::io::stdin;
@@ -96,7 +97,7 @@ pub fn get_transaction_offset() -> i32 {
 ///
 /// # Errors
 /// Returns an error if balance retrieval fails.
-pub async fn display_balance(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn display_balance(wallet: &str) -> Result<(), WalletError> {
     let eth_balanace = get_balance(wallet).await?;
     println!("Balance in ether is: {}\n", eth_balanace);
 
@@ -109,7 +110,7 @@ pub async fn display_balance(wallet: &str) -> Result<(), Box<dyn std::error::Err
 ///
 /// # Arguments
 /// * `wallet` - Wallet address as a string slice.
-pub async fn display_fiat(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn display_fiat(wallet: &str) -> Result<(), WalletError> {
     let usd_balanace = get_fiat_balance(wallet).await?;
     println!("Balance in USD is: {}$\n", usd_balanace);
 
@@ -122,7 +123,7 @@ pub async fn display_fiat(wallet: &str) -> Result<(), Box<dyn std::error::Error>
 ///
 /// # Arguments
 /// * `wallet` - Wallet address as a string slice.
-pub async fn display_transactions(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn display_transactions(wallet: &str) -> Result<(), WalletError> {
     let transactions_offset = get_transaction_offset();
     let transactions: Vec<Transaction> = get_transactions(wallet, transactions_offset).await?;
     for tx in transactions {
@@ -137,7 +138,7 @@ pub async fn display_transactions(wallet: &str) -> Result<(), Box<dyn std::error
 ///
 /// # Arguments
 /// * `wallet` - Wallet address as a string slice.
-pub async fn display_average_gas(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn display_average_gas(wallet: &str) -> Result<(), WalletError> {
     let transactions_offset = get_transaction_offset();
     let average_gas = get_average_gas(wallet, transactions_offset).await?;
     println!(
@@ -152,7 +153,7 @@ pub async fn display_average_gas(wallet: &str) -> Result<(), Box<dyn std::error:
 ///
 /// # Arguments
 /// * `wallet` - Wallet address as a string slice.
-pub async fn display_statistics(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn display_statistics(wallet: &str) -> Result<(), WalletError> {
     let stats = utils::generate_statistics(wallet).await?;
     print!("{}", stats);
     Ok(())

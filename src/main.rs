@@ -5,6 +5,7 @@ use tokio;
 
 pub mod date_utils;
 pub mod enums;
+pub mod errors;
 pub mod ethereum;
 pub mod structs;
 
