@@ -21,9 +21,19 @@ pub async fn main() {
                     .await
                     .unwrap();
             }
-
-            _ => {
-                println!("Please input a valid option\n");
+            Action::Gas => {
+                display::display_average_gas(&wallet.as_str())
+                    .await
+                    .unwrap();
+            }
+            Action::Stats => {
+                display::display_statistics(&wallet.as_str()).await.unwrap();
+            }
+            Action::Export => {
+                utils::export_to_csv(&wallet.as_str()).await.unwrap();
+            }
+            Action::Exit => {
+                std::process::exit(0);
             }
         }
     }

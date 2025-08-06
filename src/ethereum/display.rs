@@ -1,9 +1,9 @@
+use super::utils::{self, get_average_gas, get_transactions};
+use crate::ethereum::utils::{get_balance, get_fiat_balance};
 use crate::{enums::Action, structs::Transaction};
 use std::io::stdin;
 
-use crate::ethereum::utils::{get_balance, get_fiat_balance};
-
-use super::utils::get_transactions;
+const MAX_TRANSACTION_OFFSET: i32 = 20;
 
 pub fn get_wallet() -> String {
     let mut wallet = String::new();
@@ -47,6 +47,30 @@ pub fn action_input() -> Action {
     }
 }
 
+pub fn get_transaction_offset() -> i32 {
+    loop {
+        println!(
+            "How many transactions do you want to see (Max {}): ",
+            MAX_TRANSACTION_OFFSET
+        );
+
+        let mut input = String::new();
+        stdin().read_line(&mut input).expect("Failed to read line");
+
+        match input.trim().parse::<i32>() {
+            Ok(num) if num > 0 && num <= MAX_TRANSACTION_OFFSET => {
+                return num;
+            }
+            _ => {
+                println!(
+                    "Please input a number between 1 and {}",
+                    MAX_TRANSACTION_OFFSET
+                );
+            }
+        }
+    }
+}
+
 pub async fn display_balance(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
     let eth_balanace = get_balance(wallet).await?;
     println!("Balance in ether is: {}\n", eth_balanace);
@@ -62,9 +86,26 @@ pub async fn display_fiat(wallet: &str) -> Result<(), Box<dyn std::error::Error>
 }
 
 pub async fn display_transactions(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let transactions: Vec<Transaction> = get_transactions(wallet).await?;
+    let transactions_offset = get_transaction_offset();
+    let transactions: Vec<Transaction> = get_transactions(wallet, transactions_offset).await?;
     for tx in transactions {
-        tx.display();
+        tx.display_detailed();
     }
+    Ok(())
+}
+
+pub async fn display_average_gas(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let transactions_offset = get_transaction_offset();
+    let average_gas = get_average_gas(wallet, transactions_offset).await?;
+    println!(
+        "The average gas for the last transactions was: {}\n",
+        average_gas
+    );
+    Ok(())
+}
+
+pub async fn display_statistics(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let stats = utils::generate_statistics(wallet).await?;
+    print!("{}", stats);
     Ok(())
 }

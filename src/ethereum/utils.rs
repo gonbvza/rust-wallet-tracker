@@ -1,4 +1,10 @@
-use crate::{date_utils, structs::Transaction};
+use csv::Writer;
+use std::fs::File;
+
+use crate::{
+    date_utils,
+    structs::{Statistics, Transaction},
+};
 use dotenv::dotenv;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -52,6 +58,7 @@ pub async fn get_fiat_balance(wallet: &str) -> Result<f64, Box<dyn std::error::E
 
 pub async fn get_transactions(
     wallet: &str,
+    transactions_offset: i32,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
     let client = Client::new();
     dotenv().ok();
@@ -68,11 +75,11 @@ pub async fn get_transactions(
             "&startblock=0",
             "&endblock=99999999",
             "&page=1",
-            "&offset=10",
+            "&offset={}",
             "&sort=asc",
             "&apikey={}"
         ),
-        wallet, etherscan_token
+        wallet, transactions_offset, etherscan_token
     );
 
     let response = client.get(url).send().await?.json::<Value>().await?;
@@ -108,4 +115,111 @@ pub async fn get_transactions(
     }
 
     Ok(parsed_transactions)
+}
+
+pub async fn get_average_gas(
+    wallet: &str,
+    transactions_offset: i32,
+) -> Result<f64, Box<dyn std::error::Error>> {
+    let transactions = get_transactions(wallet, transactions_offset).await?;
+    let mut total_gas: i32 = 0;
+    for tx in &transactions {
+        total_gas += tx.gas.parse::<i32>().unwrap();
+    }
+    // f32 as the size of the vector will never go beyond 20
+    Ok(total_gas as f64 / transactions.len() as f64)
+}
+
+pub async fn get_average_eth(
+    wallet: &str,
+    transactions_offset: i32,
+) -> Result<f64, Box<dyn std::error::Error>> {
+    let transactions = get_transactions(wallet, transactions_offset).await?;
+    let mut total_eth: f64 = 0.0;
+    for tx in &transactions {
+        total_eth += tx.quantity;
+    }
+    // f32 as the size of the vector will never go beyond 20
+    Ok(total_eth as f64 / transactions.len() as f64)
+}
+
+pub async fn generate_statistics(wallet: &str) -> Result<Statistics, Box<dyn std::error::Error>> {
+    let tx_count = get_total_transactions(wallet).await?;
+    let average_gas = get_average_gas(wallet, (tx_count + 1) as i32).await?;
+    let average_eth = get_average_eth(wallet, (tx_count + 1) as i32).await?;
+    let first_transaction = get_first_transaction_date(wallet).await?;
+    let stats = Statistics {
+        address: wallet.to_string(),
+        total_transactions: tx_count.to_string(),
+        average_gas,
+        average_eth,
+        first_transaction,
+    };
+
+    Ok(stats)
+}
+
+pub async fn get_total_transactions(wallet: &str) -> Result<i64, Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let url = format!("https://api.blockcypher.com/v1/eth/main/addrs/{}", wallet);
+    let response = client.get(url).send().await?.json::<Value>().await?;
+    let tx_count = response["n_tx"].as_i64().ok_or("No field value")?;
+    Ok(tx_count)
+}
+
+pub async fn get_first_transaction_date(
+    wallet: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let transactions = get_transactions(wallet, 1).await?;
+    match transactions.first() {
+        Some(first_tx) => {
+            let date_str = first_tx.date.split(' ').next().unwrap_or("");
+            Ok(date_str.to_string())
+        }
+        None => Err("No transactions found".into()),
+    }
+}
+
+pub async fn export_to_csv(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let stats = generate_statistics(wallet).await?;
+    let tx_count: i32 = stats.total_transactions.parse()?;
+    let transactions = get_transactions(wallet, tx_count).await?;
+
+    let stats_file = File::create(format!("statistics.csv"))?;
+    let mut stats_writer = Writer::from_writer(stats_file);
+
+    stats_writer.write_record(&[
+        "Address",
+        "Total Transactions",
+        "Average Gas",
+        "Average ETH",
+        "First Transaction",
+    ])?;
+
+    stats_writer.write_record(&[
+        stats.address,
+        stats.total_transactions,
+        stats.average_gas.to_string(),
+        stats.average_eth.to_string(),
+        stats.first_transaction,
+    ])?;
+
+    stats_writer.flush()?;
+
+    let tx_file = File::create(format!("transactions.csv"))?;
+    let mut tx_writer = Writer::from_writer(tx_file);
+
+    tx_writer.write_record(&["From", "To", "Gas", "Quantity", "Date"])?;
+
+    for tx in transactions {
+        tx_writer.write_record(&[tx.from, tx.to, tx.gas, tx.quantity.to_string(), tx.date])?;
+    }
+
+    tx_writer.flush()?;
+
+    println!(
+        "Exported statistics and transactions for {} to CSV files",
+        wallet
+    );
+    Ok(())
 }
