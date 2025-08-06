@@ -1,9 +1,6 @@
-//
-// This is the entry point for the cli
-// From here the code diverges depending on the chain
-//
-
+use std::error::Error;
 use std::io::stdin;
+
 use tokio;
 
 pub mod date_utils;
@@ -12,27 +9,27 @@ pub mod ethereum;
 pub mod structs;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Hello, which chain is your wallet from?");
     println!("1. Ethereum");
     println!("2. Solana");
 
     let mut choice = String::new();
     loop {
-        stdin()
-            .read_line(&mut choice)
-            .expect("Did not enter a correct string");
-
-        match choice.as_str() {
-            "1\n" => {
+        choice.clear();
+        stdin().read_line(&mut choice)?;
+        match choice.trim() {
+            "1" => {
                 ethereum::main().await;
                 break;
             }
-            "2\n" => {
+            "2" => {
                 println!("To be implemented");
                 break;
             }
             _ => println!("Please insert a valid option"),
         }
     }
+
+    Ok(())
 }

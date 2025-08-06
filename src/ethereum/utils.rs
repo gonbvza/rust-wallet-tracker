@@ -1,16 +1,28 @@
-use csv::Writer;
 use std::fs::File;
+
+use csv::Writer;
+use dotenv::dotenv;
+use reqwest::Client;
+use serde_json::{json, Value};
 
 use crate::{
     date_utils,
     structs::{Statistics, Transaction},
 };
-use dotenv::dotenv;
-use reqwest::Client;
-use serde_json::{json, Value};
 
-const WEI_VALUE: i64 = 1000000000000000000;
+/// Number of Wei in one Ether.
+const WEI_VALUE: i64 = 1_000_000_000_000_000_000;
 
+/// Returns the ETH balance of the given wallet address.
+///
+/// Uses a JSON-RPC call to an Ethereum node.
+///
+/// # Arguments
+/// * `wallet` - A string slice containing the wallet address.
+///
+/// # Returns
+/// * `Ok(f64)` - The balance in ETH.
+/// * `Err` - If the API call fails or parsing fails.
 pub async fn get_balance(wallet: &str) -> Result<f64, Box<dyn std::error::Error>> {
     let client = Client::new();
 
@@ -30,14 +42,19 @@ pub async fn get_balance(wallet: &str) -> Result<f64, Box<dyn std::error::Error>
         .await?;
 
     let hex_balance = response["result"].as_str().ok_or("Missing balance field")?;
-    let wei_balance: i64 = i64::from_str_radix(&hex_balance[2..], 16)?;
-    let eth_balance: f64 = wei_balance as f64 / WEI_VALUE as f64;
 
-    Ok(eth_balance)
+    let wei_balance = i64::from_str_radix(&hex_balance[2..], 16)?;
+    Ok(wei_balance as f64 / WEI_VALUE as f64)
 }
 
+/// Returns the fiat balance (in USD) of a given wallet address.
+///
+/// Fetches ETH balance and converts it to USD using Coinbase exchange rates.
+///
+/// # Arguments
+/// * `wallet` - A string slice containing the wallet address.
 pub async fn get_fiat_balance(wallet: &str) -> Result<f64, Box<dyn std::error::Error>> {
-    let eth_balance = get_balance(&wallet).await?;
+    let eth_balance = get_balance(wallet).await?;
     let client = Client::new();
 
     let response = client
@@ -51,17 +68,22 @@ pub async fn get_fiat_balance(wallet: &str) -> Result<f64, Box<dyn std::error::E
         .as_str()
         .ok_or("Missing balance field")?;
 
-    let value_usd = rate.parse::<f64>().unwrap() * eth_balance;
-
-    Ok(value_usd)
+    Ok(rate.parse::<f64>()? * eth_balance)
 }
 
+/// Returns a list of transactions for the given wallet.
+///
+/// Uses the Etherscan API.
+///
+/// # Arguments
+/// * `wallet` - Wallet address as a string slice.
+/// * `transactions_offset` - Max number of transactions to fetch.
 pub async fn get_transactions(
     wallet: &str,
     transactions_offset: i32,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-    let client = Client::new();
     dotenv().ok();
+    let client = Client::new();
 
     let etherscan_token = std::env::var("ETHERSCAN_KEY").expect("Etherscan token must be set.");
 
@@ -83,10 +105,9 @@ pub async fn get_transactions(
     );
 
     let response = client.get(url).send().await?.json::<Value>().await?;
-
     let transactions = response["result"].as_array().ok_or("Missing field")?;
 
-    let mut parsed_transactions: Vec<Transaction> = Vec::new();
+    let mut parsed_transactions = Vec::new();
 
     for tx in transactions {
         let parsed_tx = Transaction {
@@ -99,9 +120,7 @@ pub async fn get_transactions(
             quantity: tx["value"]
                 .as_str()
                 .ok_or("No field value")?
-                .to_string()
-                .parse::<f64>()
-                .unwrap()
+                .parse::<f64>()?
                 / WEI_VALUE as f64,
             date: date_utils::epoch_converter(
                 tx["timeStamp"]
@@ -117,60 +136,69 @@ pub async fn get_transactions(
     Ok(parsed_transactions)
 }
 
+/// Returns the average gas used across transactions of a wallet.
+///
+/// # Arguments
+/// * `wallet` - Wallet address.
+/// * `transactions_offset` - Number of transactions to include.
 pub async fn get_average_gas(
     wallet: &str,
     transactions_offset: i32,
 ) -> Result<f64, Box<dyn std::error::Error>> {
     let transactions = get_transactions(wallet, transactions_offset).await?;
-    let mut total_gas: i32 = 0;
-    for tx in &transactions {
-        total_gas += tx.gas.parse::<i32>().unwrap();
-    }
-    // f32 as the size of the vector will never go beyond 20
+
+    let total_gas: i32 = transactions
+        .iter()
+        .map(|tx| tx.gas.parse::<i32>().unwrap_or(0))
+        .sum();
+
     Ok(total_gas as f64 / transactions.len() as f64)
 }
 
+/// Returns the average ETH transferred in transactions of a wallet.
 pub async fn get_average_eth(
     wallet: &str,
     transactions_offset: i32,
 ) -> Result<f64, Box<dyn std::error::Error>> {
     let transactions = get_transactions(wallet, transactions_offset).await?;
-    let mut total_eth: f64 = 0.0;
-    for tx in &transactions {
-        total_eth += tx.quantity;
-    }
-    // f32 as the size of the vector will never go beyond 20
-    Ok(total_eth as f64 / transactions.len() as f64)
+
+    let total_eth: f64 = transactions.iter().map(|tx| tx.quantity).sum();
+    Ok(total_eth / transactions.len() as f64)
 }
 
+/// Generates wallet statistics (transaction count, averages, first activity).
 pub async fn generate_statistics(wallet: &str) -> Result<Statistics, Box<dyn std::error::Error>> {
     let tx_count = get_total_transactions(wallet).await?;
     let average_gas = get_average_gas(wallet, (tx_count + 1) as i32).await?;
     let average_eth = get_average_eth(wallet, (tx_count + 1) as i32).await?;
     let first_transaction = get_first_transaction_date(wallet).await?;
-    let stats = Statistics {
+
+    Ok(Statistics {
         address: wallet.to_string(),
         total_transactions: tx_count.to_string(),
         average_gas,
         average_eth,
         first_transaction,
-    };
-
-    Ok(stats)
+    })
 }
 
+/// Returns the total number of transactions for a wallet.
 pub async fn get_total_transactions(wallet: &str) -> Result<i64, Box<dyn std::error::Error>> {
     let client = Client::new();
     let url = format!("https://api.blockcypher.com/v1/eth/main/addrs/{}", wallet);
     let response = client.get(url).send().await?.json::<Value>().await?;
-    let tx_count = response["n_tx"].as_i64().ok_or("No field value")?;
-    Ok(tx_count)
+
+    response["n_tx"].as_i64().ok_or("No field value".into())
 }
 
+/// Returns the date of the first transaction of a wallet.
+///
+/// The date is returned in `YYYY-MM-DD` format.
 pub async fn get_first_transaction_date(
     wallet: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let transactions = get_transactions(wallet, 1).await?;
+
     match transactions.first() {
         Some(first_tx) => {
             let date_str = first_tx.date.split(' ').next().unwrap_or("");
@@ -180,12 +208,15 @@ pub async fn get_first_transaction_date(
     }
 }
 
+/// Exports wallet statistics and transactions to two CSV files:
+/// - `statistics.csv`
+/// - `transactions.csv`
 pub async fn export_to_csv(wallet: &str) -> Result<(), Box<dyn std::error::Error>> {
     let stats = generate_statistics(wallet).await?;
     let tx_count: i32 = stats.total_transactions.parse()?;
     let transactions = get_transactions(wallet, tx_count).await?;
 
-    let stats_file = File::create(format!("statistics.csv"))?;
+    let stats_file = File::create("statistics.csv")?;
     let mut stats_writer = Writer::from_writer(stats_file);
 
     stats_writer.write_record(&[
@@ -206,7 +237,7 @@ pub async fn export_to_csv(wallet: &str) -> Result<(), Box<dyn std::error::Error
 
     stats_writer.flush()?;
 
-    let tx_file = File::create(format!("transactions.csv"))?;
+    let tx_file = File::create("transactions.csv")?;
     let mut tx_writer = Writer::from_writer(tx_file);
 
     tx_writer.write_record(&["From", "To", "Gas", "Quantity", "Date"])?;
