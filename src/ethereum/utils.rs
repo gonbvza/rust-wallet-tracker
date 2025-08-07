@@ -1,9 +1,6 @@
-use std::fs::File;
-
-use csv::Writer;
 use dotenv::dotenv;
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{
     date_utils,
