@@ -1,15 +1,23 @@
+
 use std::fmt;
 
+/// Represents a single Ethereum transaction.
 #[derive(Debug)]
 pub struct Transaction {
+    /// Sender wallet address.
     pub from: String,
+    /// Recipient wallet address.
     pub to: String,
+    /// Value transferred in ETH.
     pub quantity: f64,
+    /// Gas used for the transaction (in wei).
     pub gas: String,
+    /// Date of the transaction (as a string).
     pub date: String,
 }
 
 impl fmt::Display for Transaction {
+    /// Formats the transaction details in a human-readable multiline format.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -24,10 +32,12 @@ impl fmt::Display for Transaction {
 }
 
 impl Transaction {
+    /// Prints a detailed view of the transaction using `Display`.
     pub fn display_detailed(&self) {
         println!("{}", self);
     }
 
+    /// Prints a compact, one-line summary of the transaction.
     pub fn display_compact(&self) {
         println!(
             "{} -> {} | {} ETH",
@@ -38,25 +48,31 @@ impl Transaction {
     }
 }
 
+/// Summary statistics for a wallet's transaction history.
 #[derive(Debug)]
 pub struct Statistics {
+    /// Wallet address being analyzed.
     pub address: String,
+    /// Total number of transactions.
     pub total_transactions: String,
+    /// Average gas used per transaction.
     pub average_gas: f64,
+    /// Average ETH transferred per transaction.
     pub average_eth: f64,
+    /// Date of the wallet’s first transaction.
     pub first_transaction: String,
 }
 
 impl fmt::Display for Statistics {
+    /// Formats the wallet statistics in a readable format for display.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Wallet adress {}\n\
+            "Wallet address: {}\n\
              Total number of transactions: {}\n\
              Average gas per transaction: {:.2}\n\
-             Average eth per transaction: {:}\n\
-             Date of first transaction: {}\n\
-             ",
+             Average ETH per transaction: {}\n\
+             Date of first transaction: {}\n",
             self.address,
             self.total_transactions,
             self.average_gas,
@@ -65,3 +81,4 @@ impl fmt::Display for Statistics {
         )
     }
 }
+

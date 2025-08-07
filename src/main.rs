@@ -1,36 +1,24 @@
 use std::error::Error;
-use std::io::stdin;
 
+use ethereum::ether_account::EtherAccount;
+use execute_action::execute_action;
 use tokio;
 
 pub mod date_utils;
 pub mod enums;
 pub mod errors;
 pub mod ethereum;
+pub mod execute_action;
+pub mod input;
 pub mod structs;
+pub mod wallet_traits;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    println!("Hello, which chain is your wallet from?");
-    println!("1. Ethereum");
-    println!("2. Solana");
+    let wallet: String = input::get_wallet();
 
-    let mut choice = String::new();
-    loop {
-        choice.clear();
-        stdin().read_line(&mut choice)?;
-        match choice.trim() {
-            "1" => {
-                ethereum::main().await;
-                break;
-            }
-            "2" => {
-                println!("To be implemented");
-                break;
-            }
-            _ => println!("Please insert a valid option"),
-        }
-    }
+    let ether_account = EtherAccount { wallet };
+    execute_action(ether_account).await?;
 
     Ok(())
 }

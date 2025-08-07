@@ -25,6 +25,12 @@ const WEI_VALUE: i64 = 1_000_000_000_000_000_000;
 /// * `Ok(f64)` - The balance in ETH.
 /// * `Err` - If the API call fails or parsing fails.
 pub async fn get_balance(wallet: &str) -> Result<f64, WalletError> {
+    if !wallet.starts_with("0x") || wallet.len() != 42 {
+        return Err(WalletError::InvalidAddress {
+            address: wallet.to_string(),
+        });
+    }
+
     let client = Client::new();
 
     let body = json!({
