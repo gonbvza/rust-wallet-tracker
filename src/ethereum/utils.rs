@@ -24,13 +24,7 @@ const WEI_VALUE: i64 = 1_000_000_000_000_000_000;
 /// # Returns
 /// * `Ok(f64)` - The balance in ETH.
 /// * `Err` - If the API call fails or parsing fails.
-pub async fn get_balance(wallet: &str) -> Result<f64, WalletError> {
-    if !wallet.starts_with("0x") || wallet.len() != 42 {
-        return Err(WalletError::InvalidAddress {
-            address: wallet.to_string(),
-        });
-    }
-
+pub async fn get_balance(wallet: &str) -> Result<u128, WalletError> {
     let client = Client::new();
 
     let body = json!({
@@ -52,8 +46,8 @@ pub async fn get_balance(wallet: &str) -> Result<f64, WalletError> {
         field: "result".to_string(),
     })?;
 
-    let wei_balance = i64::from_str_radix(&hex_balance[2..], 16)?;
-    Ok(wei_balance as f64 / WEI_VALUE as f64)
+    let wei_balance = u128::from_str_radix(&hex_balance[2..], 16)?;
+    Ok(wei_balance as u128 / WEI_VALUE as u128)
 }
 
 /// Returns the fiat balance (in USD) of a given wallet address.
@@ -63,7 +57,9 @@ pub async fn get_balance(wallet: &str) -> Result<f64, WalletError> {
 /// # Arguments
 /// * `wallet` - A string slice containing the wallet address.
 pub async fn get_fiat_balance(wallet: &str) -> Result<f64, WalletError> {
-    let eth_balance = get_balance(wallet).await?;
+    println!("starting");
+    let eth_balance: u128 = get_balance(wallet).await?;
+    println!("here");
     let client = Client::new();
 
     let response = client
@@ -78,8 +74,8 @@ pub async fn get_fiat_balance(wallet: &str) -> Result<f64, WalletError> {
         .ok_or(WalletError::Missing {
             field: "data.rates.USD".to_string(),
         })?;
-
-    Ok(rate.parse::<f64>()? * eth_balance)
+    println!("The rate is {}", rate);
+    Ok(rate.trim_end().parse::<f64>()? * eth_balance as f64)
 }
 
 /// Returns a list of transactions for the given wallet.
@@ -229,51 +225,4 @@ pub async fn get_first_transaction_date(wallet: &str) -> Result<String, WalletEr
         }
         None => Err(WalletError::NoTransactions),
     }
-}
-
-/// Exports wallet statistics and transactions to two CSV files:
-/// - `statistics.csv`
-/// - `transactions.csv`
-pub async fn export_to_csv(wallet: &str) -> Result<(), WalletError> {
-    let stats = generate_statistics(wallet).await?;
-    let tx_count: i32 = stats.total_transactions.parse()?;
-    let transactions = get_transactions(wallet, tx_count).await?;
-
-    let stats_file = File::create("statistics.csv")?;
-    let mut stats_writer = Writer::from_writer(stats_file);
-
-    stats_writer.write_record(&[
-        "Address",
-        "Total Transactions",
-        "Average Gas",
-        "Average ETH",
-        "First Transaction",
-    ])?;
-
-    stats_writer.write_record(&[
-        stats.address,
-        stats.total_transactions,
-        stats.average_gas.to_string(),
-        stats.average_eth.to_string(),
-        stats.first_transaction,
-    ])?;
-
-    stats_writer.flush()?;
-
-    let tx_file = File::create("transactions.csv")?;
-    let mut tx_writer = Writer::from_writer(tx_file);
-
-    tx_writer.write_record(&["From", "To", "Gas", "Quantity", "Date"])?;
-
-    for tx in transactions {
-        tx_writer.write_record(&[tx.from, tx.to, tx.gas, tx.quantity.to_string(), tx.date])?;
-    }
-
-    tx_writer.flush()?;
-
-    println!(
-        "Exported statistics and transactions for {} to CSV files",
-        wallet
-    );
-    Ok(())
 }
